@@ -1,10 +1,34 @@
 #!/usr/bin/env python3
-'''Beam-jet interaction'''
+'''3D view of a beam-jet crossing. Beam (green) is horizontal, 
+jet (red) vertical. Vertical sigma calculated for the beam and the crossing section'''
+#__version__ = 'v01 2019-07-15'#
+
 import sys
 from pyqtgraph.Qt import QtCore, QtGui
 import pyqtgraph.opengl as gl
 import numpy as np
 from timeit import default_timer as timer
+
+import argparse
+parser = argparse.ArgumentParser(description=__doc__)
+#parser.add_argument('-d','--dbg', action='store_true', help='debugging')
+parser.add_argument('-c','--crossing',action='store_true',help=\
+'Show the beam-jet crossing only (product of densities')
+parser.add_argument('-b','--beamSigmas',default='1,1',help=\
+'Width (sigma) of the beam (X and Z), default (1,1)')
+parser.add_argument('-j','--jetSigmas',default='1,1',help=\
+'Width (sigma) of the jet (X,Z), default (1,1)')
+parser.add_argument('-s','--cellSize',type=float,default=0.05,help=\
+'Size of the elementary cell, default 0.05')
+parser.add_argument('-z','--zmax',type=int,default=200,help=\
+'Height (Z-size of the scene, default=200, X and Y are fixed at 200')
+pargs = parser.parse_args()
+beamSigma = [float(i) for i in pargs.beamSigmas.split(',')]
+jetSigma = [float(i) for i in pargs.jetSigmas.split(',')]
+
+import pyqtgraph as pg
+pg.setConfigOption('background', 'w')
+pg.setConfigOption('foreground', 'k')
 
 app = QtGui.QApplication([])
 w = gl.GLViewWidget()
@@ -12,115 +36,80 @@ w.opts['distance'] = 200
 w.show()
 w.setWindowTitle(__doc__)
 
-#b = gl.GLBoxItem()
-#w.addItem(b)
 g = gl.GLGridItem()
 g.scale(10, 10, 1)
 w.addItem(g)
 
 X,Y,Z = 0,1,2
-CellSize = 0.05 # mm
-def beamOld(ix, iy, iz, dens=(1.,1.), sig=(1.,1.), offset=None):
-    if offset is None:
-        offset = ix/2, iy/2, iz/2
-    x = (ix - offset[0])*CellSize
-    y = (iy - offset[1])*CellSize
-    z = (iz - offset[2])*CellSize
-    return dens[X]*dens[Y]*np.exp(-0.5*((x/sig[X])**2 + (y/sig[Y])**2))*10
-    
-def vsum(ix, iy, iz, dens=(1.,1.), sig=(1.,1.), offset=None):
-    if offset is None:
-        offset = ix/2, iy/2, iz/2
-    x = (ix - offset[0])*CellSize
-    y = (iy - offset[1])*CellSize
-    z = (iz - offset[2])*CellSize
-    return x+y+z
+Beam,Jet = 0,1
 
-sceneShape = 200,200,100 # 200,200 - default of the GLVolumeItem
-#sceneShape = 100,50,100 # 
+sceneShape = 200,200,pargs.zmax # 200,200 - default of the GLVolumeItem
 offset = [int(v/2) for v in sceneShape]
-print('offset',offset)
 scene = np.zeros(sceneShape + (4,), dtype=np.ubyte)
 
-def beam_slow(sc,dens,sig,rgba=(255,0,0,50)): #axis=X,
-    shape = sc.shape[:3]
-    #ofsZ = offset[Z]
-    #shape = sc.shape[X], sc.shape[Y], int(sc.shape[Z]/4)
-    #ofsZ = offset[Z] - shape[Z]
+def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):
+    '''Create a beam array along the axis where sigmama is  zero'''
     dens = np.array(dens)
-    sig = np.array(sig)
-    print('dens',dens)
+    sigma = np.array(sigma)
     axis = np.argwhere(dens==0)[0][0]
-    print('axis',axis)
     dens[axis] = 1.
     ddd = dens[X]*dens[Y]*dens[Z]
-    sig[axis] = 1.
-    s = 1./sig
+    sigma[axis] = 1.
+    s = 1./sigma
     s[axis] = 0.
-    print(dens,s)
     ts = timer()
-    for ix,iy,iz in np.ndindex(shape):
-        x = (ix - offset[X])*CellSize
-        y = (iy - offset[Y])*CellSize
-        z = (iz - offset[Z])*CellSize
-        v = ddd*np.exp(-0.5*((x*s[X])**2 + (y*s[Y])**2 + (z*s[Z])**2))
-        #lrgba = [v/ddd*255,0,0,v/ddd*50]
-        lrgba = [v/ddd*g for g in rgba]
-        sc[ix,iy,iz] = sc[ix,iy,iz] + lrgba
-    print('time/point = %.1f us'%((timer()-ts)/ix/iy/iz*1.e6)) #9.2us/cell
-
-def beam(ix, iy, iz, dens=(0,1,1), sig=(0,1,1)):
-    dens = np.array(dens)
-    sig = np.array(sig)
-    #print('dens',dens)
-    axis = np.argwhere(dens==0)[0][0]
-    #print('axis',axis)
-    dens[axis] = 1.
-    ddd = dens[X]*dens[Y]*dens[Z]
-    sig[axis] = 1.
-    s = 1./sig
-    s[axis] = 0.
-    #print(dens,s)
-    ts = timer()
-    x = (ix - offset[X])*CellSize
-    y = (iy - offset[Y])*CellSize
-    z = (iz - offset[Z])*CellSize
-    #print('x,y,z',x.shape,y.shape,z.shape)
+    x = (ix - offset[X])*pargs.cellSize
+    y = (iy - offset[Y])*pargs.cellSize
+    z = (iz - offset[Z])*pargs.cellSize
     v = ddd*np.exp(-0.5*((x*s[X])**2 + (y*s[Y])**2 + (z*s[Z])**2))
     print('time/cell = %.1f ns'%((timer()-ts)*1.e9/v.size))
     return v
-    
-#beam(scene,(0,1,1),(0,1,1),rgba=(0,127,0,50))
-#print('beam',scene.shape,scene.max())
-#beam(scene,(1,1,0),(1,1,0),rgba=(0,127,0,50))
-#print('jet',scene.shape,scene.max())
-#print(scene)
 
-dbeam = np.fromfunction(beam,scene.shape[:3],dens=(0,1,1),sig=(0,1,1))
-djet = np.fromfunction(beam,scene.shape[:3],dens=(1,1,0),sig=(1,1,0))
+dbeam = np.fromfunction(beam,scene.shape[:3],dens=(0,1,1)\
+       ,sigma=(0,beamSigma[0],beamSigma[1]))
+djet = np.fromfunction(beam,scene.shape[:3],dens=(1,1,0)\
+       ,sigma=(jetSigma[0],jetSigma[1],0))
 dmax = dbeam.max()
-print('beam',dbeam.shape,dmax)
+yBeamSums = np.sum(dbeam,axis=(X,Z))
+bins = np.arange(len(yBeamSums))*pargs.cellSize
+
+def stDev(x,weights):
+    mean = np.average(x,weights=weights)
+    return np.sqrt(np.average((x - mean)**2, weights=weights))
+std = stDev(bins,yBeamSums)
+plt = pg.plot(title='Vert. beam profile')
+plt.addLegend()
+plt.plot(x=bins,y=yBeamSums,pen='k',name='Beam, vSigma=%.2f'%std)
+plt.showGrid(True,True)
+
+zCrosSums = np.sum(dbeam*djet,axis=(X,Y))
+crosStDev = stDev(bins,zCrosSums)
+plt.plot(bins,zCrosSums,pen='b',name='Crossing, vSigma=%.2f'%crosStDev)
+
 scene = np.empty(dbeam.shape + (4,), dtype=np.ubyte)
 
-#scene[..., 0] = djet * (255./dmax)
-#scene[..., 1] = dbeam * (255./dmax)
-#scene[..., 2] = 0#scene[...,1]
+dBlue = 0
+if pargs.crossing:
+    dRed = dbeam * djet
+    dRed = 255.*dRed/dRed.max()
+    dGreen = dRed
+    dAlpha = ((dRed*0.5 + dGreen*0.5).astype(float) / 255.)**2 * 255
+else:
+    g = 255./dbeam.max(),255./djet.max() 
+    dRed = g[Jet]*djet
+    dGreen = g[Beam]*dbeam
+    dAlpha = ((dRed*0.5 + dGreen*0.5).astype(float) / 255.)**2 * 255
 
-d = (dbeam * djet)
-#d = dbeam
-
-d *= (255./d.max())
-scene[..., 0] = d
-scene[..., 1] = d
-scene[..., 2] = d
-scene[..., 3] = scene[..., 0]*0.3 + scene[..., 1]*0.3
-scene[..., 3] = (scene[..., 3].astype(float) / 255.) **2 * 255
+scene[..., 0] = dRed
+scene[..., 1] = dGreen
+scene[..., 2] = dBlue
+scene[..., 3] = dAlpha
 
 def bars(v):
     shape = v.shape
-    v[0         ,0,:] = [0,255,0,255]
-    v[shape[0]-1,0,:] = [0,0,255,255]
-    v[0         ,shape[1]-1,:] = [255,255,0,255]
+    v[0:2,0:2,:] = [255,0,0,255]
+    v[:,0:2,0:2] = [0,255,0,255]
+    v[0:2,:,0:2] = [0,0,255,255]
 bars(scene)    
 
 v = gl.GLVolumeItem(scene)
@@ -129,6 +118,10 @@ w.addItem(v)
 
 ax = gl.GLAxisItem()
 w.addItem(ax)
+
+# enable Ctrl-C to kill application
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)    
 
 ## Start Qt event loop unless running in interactive mode.
 if __name__ == '__main__':
