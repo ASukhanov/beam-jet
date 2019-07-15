@@ -62,7 +62,7 @@ def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):
     y = (iy - offset[Y])*pargs.cellSize
     z = (iz - offset[Z])*pargs.cellSize
     v = ddd*np.exp(-0.5*((x*s[X])**2 + (y*s[Y])**2 + (z*s[Z])**2))
-    print('time/cell = %.1f ns'%((timer()-ts)*1.e9/v.size))
+    #print('time/cell = %.1f ns'%((timer()-ts)*1.e9/v.size))# 12ns/cell
     return v
 
 dbeam = np.fromfunction(beam,scene.shape[:3],dens=(0,1,1)\
