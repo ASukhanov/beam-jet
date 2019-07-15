@@ -2,6 +2,7 @@
 '''3D view of a beam-jet crossing. Beam (green) is horizontal, 
 jet (red) vertical. Vertical sigma calculated for the beam and the crossing section'''
 #__version__ = 'v01 2019-07-15'#
+#__version__ = 'v02 2019-07-15'# show crossection along x=0
 
 import sys
 from pyqtgraph.Qt import QtCore, QtGui
@@ -45,7 +46,7 @@ Beam,Jet = 0,1
 
 sceneShape = 200,200,pargs.zmax # 200,200 - default of the GLVolumeItem
 offset = [int(v/2) for v in sceneShape]
-scene = np.zeros(sceneShape + (4,), dtype=np.ubyte)
+#scene = np.zeros(sceneShape + (4,), dtype=np.ubyte)
 
 def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):
     '''Create a beam array along the axis where sigmama is  zero'''
@@ -65,9 +66,9 @@ def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):
     #print('time/cell = %.1f ns'%((timer()-ts)*1.e9/v.size))# 12ns/cell
     return v
 
-dbeam = np.fromfunction(beam,scene.shape[:3],dens=(0,1,1)\
+dbeam = np.fromfunction(beam,sceneShape,dens=(0,1,1)\
        ,sigma=(0,beamSigma[0],beamSigma[1]))
-djet = np.fromfunction(beam,scene.shape[:3],dens=(1,1,0)\
+djet = np.fromfunction(beam,sceneShape,dens=(1,1,0)\
        ,sigma=(jetSigma[0],jetSigma[1],0))
 dmax = dbeam.max()
 yBeamSums = np.sum(dbeam,axis=(X,Z))
@@ -76,6 +77,7 @@ bins = np.arange(len(yBeamSums))*pargs.cellSize
 def stDev(x,weights):
     mean = np.average(x,weights=weights)
     return np.sqrt(np.average((x - mean)**2, weights=weights))
+
 std = stDev(bins,yBeamSums)
 plt = pg.plot(title='Vert. beam profile')
 plt.addLegend()
@@ -86,7 +88,7 @@ zCrosSums = np.sum(dbeam*djet,axis=(X,Y))
 crosStDev = stDev(bins,zCrosSums)
 plt.plot(bins,zCrosSums,pen='b',name='Crossing, vSigma=%.2f'%crosStDev)
 
-scene = np.empty(dbeam.shape + (4,), dtype=np.ubyte)
+scene = np.zeros(dbeam.shape + (4,), dtype=np.ubyte)
 
 dBlue = 0
 if pargs.crossing:
@@ -103,7 +105,7 @@ else:
 scene[..., 0] = dRed
 scene[..., 1] = dGreen
 scene[..., 2] = dBlue
-scene[..., 3] = dAlpha
+scene[:,:int(sceneShape[Y]/2),:,3] = dAlpha[:,:int(sceneShape[Y]/2),:]
 
 def bars(v):
     shape = v.shape
