@@ -3,6 +3,7 @@
 jet (red) vertical. Vertical sigma calculated for the beam and the crossing section'''
 #__version__ = 'v01 2019-07-15'#
 #__version__ = 'v02 2019-07-15'# show crossection along x=0
+__version__ = 'v03 2019-07-15'# beam vSigma was wrong
 
 import sys
 from pyqtgraph.Qt import QtCore, QtGui
@@ -71,7 +72,7 @@ dbeam = np.fromfunction(beam,sceneShape,dens=(0,1,1)\
 djet = np.fromfunction(beam,sceneShape,dens=(1,1,0)\
        ,sigma=(jetSigma[0],jetSigma[1],0))
 dmax = dbeam.max()
-yBeamSums = np.sum(dbeam,axis=(X,Z))
+yBeamSums = np.sum(dbeam,axis=(X,Y))
 bins = np.arange(len(yBeamSums))*pargs.cellSize
 
 def stDev(x,weights):
