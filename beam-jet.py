@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-'''3D view of a beam-jet crossing. Beam (green) is horizontal, 
-jet (red) vertical. Vertical sigma calculated for the beam and the crossing section'''
+'''3D view of a beam-jet crossing. Beam (green) is horizontal along X-axis, 
+jet (red) is vertical, along Z axis. Vertical sigma is calculated for the 
+beam and the crossing area'''
 #__version__ = 'v01 2019-07-15'#
 #__version__ = 'v02 2019-07-15'# show crossection along x=0
 __version__ = 'v03 2019-07-15'# beam vSigma was wrong
@@ -11,15 +12,18 @@ import pyqtgraph.opengl as gl
 import numpy as np
 from timeit import default_timer as timer
 
+#``````````````````Helper functions```````````````````````````````````````````
+def quadratic_drop(x,maxX,endGain=1):
+    return 1. - (1.-endGain)*(x/maxX)**2
+#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 import argparse
 parser = argparse.ArgumentParser(description=__doc__)
-#parser.add_argument('-d','--dbg', action='store_true', help='debugging')
+parser.add_argument('-b','--beamSigmas',default='1,1',help=\
+'Width (sigma) of the beam (X,Z), default (1,1)')
 parser.add_argument('-c','--crossing',action='store_true',help=\
 'Show the beam-jet crossing only (product of densities')
-parser.add_argument('-b','--beamSigmas',default='1,1',help=\
-'Width (sigma) of the beam (X and Z), default (1,1)')
 parser.add_argument('-j','--jetSigmas',default='1,1',help=\
-'Width (sigma) of the jet (X,Z), default (1,1)')
+'Width (sigma) of the jet (X,Y), default (1,1)')
 parser.add_argument('-s','--cellSize',type=float,default=0.05,help=\
 'Size of the elementary cell, default 0.05')
 parser.add_argument('-z','--zmax',type=int,default=200,help=\
@@ -36,7 +40,8 @@ app = QtGui.QApplication([])
 w = gl.GLViewWidget()
 w.opts['distance'] = 200
 w.show()
-w.setWindowTitle(__doc__)
+w.setWindowTitle('Beam(green) sigmas:'+pargs.beamSigmas+\
+', Jet(red) sigmas:'+pargs.jetSigmas)
 
 g = gl.GLGridItem()
 g.scale(10, 10, 1)
@@ -49,48 +54,59 @@ sceneShape = 200,200,pargs.zmax # 200,200 - default of the GLVolumeItem
 offset = [int(v/2) for v in sceneShape]
 #scene = np.zeros(sceneShape + (4,), dtype=np.ubyte)
 
-def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):
-    '''Create a beam array along the axis where sigmama is  zero'''
+def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):#, sigmaDrop=0.):
+    '''Create a beam array along the axis where the sigma is  zero'''
     dens = np.array(dens)
     sigma = np.array(sigma)
     axis = np.argwhere(dens==0)[0][0]
+    sigma[axis] = 1.
+    invSigma = 1./sigma
+    invSigma[axis] = 0.
     dens[axis] = 1.
     ddd = dens[X]*dens[Y]*dens[Z]
-    sigma[axis] = 1.
-    s = 1./sigma
-    s[axis] = 0.
     ts = timer()
     x = (ix - offset[X])*pargs.cellSize
     y = (iy - offset[Y])*pargs.cellSize
     z = (iz - offset[Z])*pargs.cellSize
-    v = ddd*np.exp(-0.5*((x*s[X])**2 + (y*s[Y])**2 + (z*s[Z])**2))
-    #print('time/cell = %.1f ns'%((timer()-ts)*1.e9/v.size))# 12ns/cell
+    #if sigmaDrop:
+    #    r = np.sqrt(x**2 + y**2 + z**2)
+    #    print(r.shape)
+    #    invSigma *= quadratic_drop(r,1.,1.-sigmaDrop)
+    v = ddd*np.exp(-0.5*((x*invSigma[X])**2 + (y*invSigma[Y])**2\
+                          + (z*invSigma[Z])**2))
+    print('time/cell = %.1f ns'%((timer()-ts)*1.e9/v.size))# 12ns/cell
     return v
 
 dbeam = np.fromfunction(beam,sceneShape,dens=(0,1,1)\
-       ,sigma=(0,beamSigma[0],beamSigma[1]))
+       ,sigma=(0,beamSigma[0],beamSigma[1]))#,sigmaDrop=0.5)
 djet = np.fromfunction(beam,sceneShape,dens=(1,1,0)\
        ,sigma=(jetSigma[0],jetSigma[1],0))
 dmax = dbeam.max()
-yBeamSums = np.sum(dbeam,axis=(X,Y))
-bins = np.arange(len(yBeamSums))*pargs.cellSize
+zBeamSums = np.sum(dbeam,axis=(X,Y))
+bins = (np.arange(len(zBeamSums)) - offset[Z])*pargs.cellSize
 
+# calculate standard deviation oa fighted array
 def stDev(x,weights):
     mean = np.average(x,weights=weights)
     return np.sqrt(np.average((x - mean)**2, weights=weights))
 
-std = stDev(bins,yBeamSums)
-plt = pg.plot(title='Vert. beam profile')
+# plot vertical beam profile
+std = stDev(bins,zBeamSums)
+plt = pg.plot(title='Vertical profile',labels={'left':'Intensity [Arb.U]'\
+,'bottom':'Z (vertical distance) [sigma]'})
 plt.addLegend()
-plt.plot(x=bins,y=yBeamSums,pen='k',name='Beam, vSigma=%.2f'%std)
+plt.plot(x=bins,y=zBeamSums,pen=pg.mkPen((0,200,0),width=3)\
+,name='Beam, vSigma=%.2f'%std)
 plt.showGrid(True,True)
 
+# plot vertical profile of the crossing area
 zCrosSums = np.sum(dbeam*djet,axis=(X,Y))
 crosStDev = stDev(bins,zCrosSums)
-plt.plot(bins,zCrosSums,pen='b',name='Crossing, vSigma=%.2f'%crosStDev)
+plt.plot(bins,zCrosSums,pen=pg.mkPen((210,210,0),width=3)\
+,name='Crossing, vSigma=%.2f'%crosStDev)
 
+# render the 3D view
 scene = np.zeros(dbeam.shape + (4,), dtype=np.ubyte)
-
 dBlue = 0
 if pargs.crossing:
     dRed = dbeam * djet
@@ -102,12 +118,12 @@ else:
     dRed = g[Jet]*djet
     dGreen = g[Beam]*dbeam
     dAlpha = ((dRed*0.5 + dGreen*0.5).astype(float) / 255.)**2 * 255
-
 scene[..., 0] = dRed
 scene[..., 1] = dGreen
 scene[..., 2] = dBlue
 scene[:,:int(sceneShape[Y]/2),:,3] = dAlpha[:,:int(sceneShape[Y]/2),:]
 
+# show the coordinate bars X-green, Y-blue, Z-red
 def bars(v):
     shape = v.shape
     v[0:2,0:2,:] = [255,0,0,255]
@@ -115,10 +131,11 @@ def bars(v):
     v[0:2,:,0:2] = [0,0,255,255]
 bars(scene)    
 
+# show the scene
 v = gl.GLVolumeItem(scene)
 v.translate(-offset[0],-offset[1],-offset[2])
 w.addItem(v)
-
+# add axis grate
 ax = gl.GLAxisItem()
 w.addItem(ax)
 
