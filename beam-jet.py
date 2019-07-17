@@ -4,7 +4,8 @@ jet (red) is vertical, along Z axis. Vertical sigma is calculated for the
 beam and the crossing area'''
 #__version__ = 'v01 2019-07-15'#
 #__version__ = 'v02 2019-07-15'# show crossection along x=0
-__version__ = 'v03 2019-07-15'# beam vSigma was wrong
+#__version__ = 'v03 2019-07-15'# beam vSigma was wrong
+__version__ = 'v04 2019-07-17'# Camera angle is taken into account.
 
 import sys
 from pyqtgraph.Qt import QtCore, QtGui
@@ -15,7 +16,14 @@ from timeit import default_timer as timer
 #``````````````````Helper functions```````````````````````````````````````````
 def quadratic_drop(x,maxX,endGain=1):
     return 1. - (1.-endGain)*(x/maxX)**2
+
+def stDev(x,weights):
+    '''returns sum, mean and standartd deviation of the weighted array 
+    (histogtram)'''
+    mean = np.average(x,weights=weights)
+    return np.sqrt(np.average((x - mean)**2, weights=weights))
 #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+
 import argparse
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('-b','--beamSigmas',default='1,1',help=\
@@ -24,10 +32,13 @@ parser.add_argument('-c','--crossing',action='store_true',help=\
 'Show the beam-jet crossing only (product of densities')
 parser.add_argument('-j','--jetSigmas',default='1,1',help=\
 'Width (sigma) of the jet (X,Y), default (1,1)')
+parser.add_argument('-r','--rotate',type=float,default=45,help=\
+'Rotate the crossing area by degrees in horizontal plane') 
 parser.add_argument('-s','--cellSize',type=float,default=0.05,help=\
 'Size of the elementary cell, default 0.05')
 parser.add_argument('-z','--zmax',type=int,default=200,help=\
 'Height (Z-size of the scene, default=200, X and Y are fixed at 200')
+
 pargs = parser.parse_args()
 beamSigma = [float(i) for i in pargs.beamSigmas.split(',')]
 jetSigma = [float(i) for i in pargs.jetSigmas.split(',')]
@@ -54,6 +65,7 @@ sceneShape = 200,200,pargs.zmax # 200,200 - default of the GLVolumeItem
 offset = [int(v/2) for v in sceneShape]
 #scene = np.zeros(sceneShape + (4,), dtype=np.ubyte)
 
+#``````````````````Generate beam and jet``````````````````````````````````````
 def beam(ix, iy, iz, dens=(0,1,1), sigma=(0,1,1)):#, sigmaDrop=0.):
     '''Create a beam array along the axis where the sigma is  zero'''
     dens = np.array(dens)
@@ -84,13 +96,8 @@ djet = np.fromfunction(beam,sceneShape,dens=(1,1,0)\
 dmax = dbeam.max()
 zBeamSums = np.sum(dbeam,axis=(X,Y))
 bins = (np.arange(len(zBeamSums)) - offset[Z])*pargs.cellSize
-
-# calculate standard deviation oa fighted array
-def stDev(x,weights):
-    mean = np.average(x,weights=weights)
-    return np.sqrt(np.average((x - mean)**2, weights=weights))
-
-# plot vertical beam profile
+#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#``````````````````plot vertical profile of the beam``````````````````````````
 std = stDev(bins,zBeamSums)
 plt = pg.plot(title='Vertical profile',labels={'left':'Intensity [Arb.U]'\
 ,'bottom':'Z (vertical distance) [sigma]'})
@@ -99,13 +106,24 @@ plt.plot(x=bins,y=zBeamSums,pen=pg.mkPen((0,200,0),width=3)\
 ,name='Beam, vSigma=%.2f'%std)
 plt.showGrid(True,True)
 
-# plot vertical profile of the crossing area
-zCrosSums = np.sum(dbeam*djet,axis=(X,Y))
+#``````````````````plot vertical profile of the rotated crossing area`````````
+beamJet = dbeam*djet
+import scipy.ndimage.interpolation as ndimage
+print('rotation',pargs.rotate)
+print('bj',beamJet.shape,beamJet[offset[X]-10,offset[Y]-10,offset[Z]])
+beamJetRotated = ndimage.rotate(beamJet,pargs.rotate,(X,Y))
+print('bjr',beamJetRotated.shape,beamJetRotated[offset[X]-10,offset[Y]-10,offset[Z]])
+zCrosSums = np.sum(beamJetRotated,axis=(X,Y))
 crosStDev = stDev(bins,zCrosSums)
 plt.plot(bins,zCrosSums,pen=pg.mkPen((210,210,0),width=3)\
 ,name='Crossing, vSigma=%.2f'%crosStDev)
-
-# render the 3D view
+yCrosSums = np.sum(beamJetRotated,axis=(X,Z))
+yBins = (np.arange(len(yCrosSums)) - offset[Y])*pargs.cellSize
+yCrosStDev = stDev(yBins,yCrosSums)
+plt.plot(yBins,yCrosSums,pen=pg.mkPen((0,0,210),width=3)\
+,name='Crossing, hSigma=%.2f'%yCrosStDev)
+#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#``````````````````render the 3D view`````````````````````````````````````````
 scene = np.zeros(dbeam.shape + (4,), dtype=np.ubyte)
 dBlue = 0
 if pargs.crossing:
@@ -122,14 +140,15 @@ scene[..., 0] = dRed
 scene[..., 1] = dGreen
 scene[..., 2] = dBlue
 scene[:,:int(sceneShape[Y]/2),:,3] = dAlpha[:,:int(sceneShape[Y]/2),:]
-
-# show the coordinate bars X-green, Y-blue, Z-red
+#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#``````````````````show the coordinate bars X-green, Y-blue, Z-red````````````
 def bars(v):
     shape = v.shape
     v[0:2,0:2,:] = [255,0,0,255]
     v[:,0:2,0:2] = [0,255,0,255]
     v[0:2,:,0:2] = [0,0,255,255]
 bars(scene)    
+#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 # show the scene
 v = gl.GLVolumeItem(scene)
