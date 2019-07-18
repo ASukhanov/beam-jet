@@ -6,7 +6,7 @@ beam and the crossing area'''
 #__version__ = 'v02 2019-07-15'# show crossection along x=0
 #__version__ = 'v03 2019-07-15'# beam vSigma was wrong
 #__version__ = 'v04 2019-07-17'# Camera angle is taken into account.
-__version__ = 'v04 2019-07-17'# 
+__version__ = 'v05 2019-07-18'# Camera is sketched on the scene
 
 import sys
 from pyqtgraph.Qt import QtCore, QtGui
@@ -111,9 +111,7 @@ plt.showGrid(True,True)
 beamJet = dbeam*djet
 import scipy.ndimage.interpolation as ndimage
 print('rotation',pargs.rotate)
-print('bj',beamJet.shape,beamJet[offset[X]-10,offset[Y]-10,offset[Z]])
 beamJetRotated = ndimage.rotate(beamJet,pargs.rotate,(X,Y))
-print('bjr',beamJetRotated.shape,beamJetRotated[offset[X]-10,offset[Y]-10,offset[Z]])
 zCrosSums = np.sum(beamJetRotated,axis=(X,Y))
 crosStDev = stDev(bins,zCrosSums)
 plt.plot(bins,zCrosSums,pen=pg.mkPen((210,210,0),width=3)\
@@ -147,9 +145,9 @@ scene[:,:int(sceneShape[Y]/2),:,3] = dAlpha[:,:int(sceneShape[Y]/2),:]
 #``````````````````show the coordinate bars X-green, Y-blue, Z-red````````````
 def bars(v):
     shape = v.shape
-    v[0:2,0:2,:] = [255,0,0,255]
-    v[:,0:2,0:2] = [0,255,0,255]
-    v[0:2,:,0:2] = [0,0,255,255]
+    v[offset[X]:offset[X]+1,offset[Y]:offset[Y]+1,:] = [255,0,0,255]
+    v[:,offset[Y]:offset[Y]+1,offset[Z]:offset[Z]+1] = [0,255,0,255]
+    v[offset[X]:offset[X]+1,:,offset[Z]:offset[Z]+1] = [0,0,255,255]
 bars(scene)
 
 md = gl.MeshData.cylinder(rows=10, cols=20, radius=[3, 6.0], length=20)
@@ -160,10 +158,13 @@ md.setFaceColors(colors)
 m5 = gl.GLMeshItem(meshdata=md, smooth=True, drawEdges=True, edgeColor=(1,0,0,1), shader='balloon')
 m5.rotate(90,1,0,0)
 m5.rotate(-pargs.rotate,0,0,1)
-
-#m5.translate(-3,3,0)
-#m5.translate(-10,10,0)
-m5.translate(offset[X],offset[Y],0)
+if pargs.rotate > 45.:
+    camX = offset[X]
+    camY = offset[Y] * np.tan((90 - pargs.rotate)*np.pi/180)
+else:
+    camX = offset[X] * np.tan((pargs.rotate)*np.pi/180)
+    camY = offset[Y]
+m5.translate(camX,camY,0)
 w.addItem(m5)
 #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
