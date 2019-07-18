@@ -5,7 +5,8 @@ beam and the crossing area'''
 #__version__ = 'v01 2019-07-15'#
 #__version__ = 'v02 2019-07-15'# show crossection along x=0
 #__version__ = 'v03 2019-07-15'# beam vSigma was wrong
-__version__ = 'v04 2019-07-17'# Camera angle is taken into account.
+#__version__ = 'v04 2019-07-17'# Camera angle is taken into account.
+__version__ = 'v04 2019-07-17'# 
 
 import sys
 from pyqtgraph.Qt import QtCore, QtGui
@@ -139,6 +140,8 @@ else:
 scene[..., 0] = dRed
 scene[..., 1] = dGreen
 scene[..., 2] = dBlue
+#scene[..., 3] = dAlpha # fully colored
+# right half of the scene transparent:
 scene[:,:int(sceneShape[Y]/2),:,3] = dAlpha[:,:int(sceneShape[Y]/2),:]
 #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 #``````````````````show the coordinate bars X-green, Y-blue, Z-red````````````
@@ -147,7 +150,21 @@ def bars(v):
     v[0:2,0:2,:] = [255,0,0,255]
     v[:,0:2,0:2] = [0,255,0,255]
     v[0:2,:,0:2] = [0,0,255,255]
-bars(scene)    
+bars(scene)
+
+md = gl.MeshData.cylinder(rows=10, cols=20, radius=[3, 6.0], length=20)
+colors = np.ones((md.faceCount(), 4), dtype=float)
+colors[::2,0] = 0
+colors[:,1] = np.linspace(0, 1, colors.shape[0])
+md.setFaceColors(colors)
+m5 = gl.GLMeshItem(meshdata=md, smooth=True, drawEdges=True, edgeColor=(1,0,0,1), shader='balloon')
+m5.rotate(90,1,0,0)
+m5.rotate(-pargs.rotate,0,0,1)
+
+#m5.translate(-3,3,0)
+#m5.translate(-10,10,0)
+m5.translate(offset[X],offset[Y],0)
+w.addItem(m5)
 #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 # show the scene
